@@ -8,6 +8,64 @@ If you believe you've found a security issue in OpenClaw, please report it priva
 | ---------- | ------------------------------------------------------------------ | ----------------------------------------- |
 | 2026-04-25 | [`docs/security/audit-2026-04.md`](docs/security/audit-2026-04.md) | SBOM, zero-trust, solo-maintainer surface |
 
+## Verifying release artifacts
+
+OpenClaw releases ship with signed build provenance and CycloneDX 1.6 SBOMs
+attached as sigstore-backed attestations. Verify any release before consuming
+it.
+
+**npm CLI (`@openclaw/openclaw`):**
+
+```bash
+# Registry signature + npm trusted-publishing provenance.
+npm audit signatures @openclaw/openclaw@<version>
+
+# GitHub-issued build provenance for the published tarball.
+gh attestation verify --owner openclaw $(npm pack openclaw@<version> --dry-run --json | jq -r '.[0].filename')
+```
+
+**Docker image (`ghcr.io/openclaw/openclaw`):**
+
+```bash
+# List attestations attached as OCI referrers.
+cosign tree ghcr.io/openclaw/openclaw@<digest>
+
+# Verify build provenance.
+gh attestation verify --owner openclaw oci://ghcr.io/openclaw/openclaw@<digest>
+
+# Verify the CycloneDX SBOM attestation.
+cosign verify-attestation \
+  --type cyclonedx \
+  --certificate-identity-regexp '^https://github\.com/openclaw/openclaw/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/openclaw/openclaw@<digest>
+```
+
+**macOS DMG / .app:**
+
+The Sparkle update channel verifies the EdDSA signature (see `appcast.xml`)
+on the auto-update path. For one-off downloads from GitHub Releases, the
+`sbom-macos-<tag>` artifact published by the public macos-release.yml is
+attested in the private mac-publish lane; verify with
+`gh attestation verify --owner openclaw <DMG-path>` once the private workflow
+attaches the attestation.
+
+### Test-image provenance policy
+
+Some Docker `provenance: false` settings in `.github/workflows/` are
+intentional and apply only to images that are never released:
+
+- `install-smoke.yml` — local-only smoke images (`load: true, push: false`).
+  Built and discarded inside one CI run.
+- `npm-telegram-beta-e2e.yml` — single-run E2E test image pushed to a
+  per-run tag in GHCR for the test job to pull, then orphaned.
+- `openclaw-live-and-e2e-checks-reusable.yml` — same pattern; ephemeral
+  per-run tag for live/E2E coverage.
+
+These images are not consumer-facing and carry no SLSA expectations.
+Published images (`docker-release.yml`) use `provenance: mode=max` and the
+attestation chain documented above.
+
 ## Reporting
 
 Report vulnerabilities directly to the repository where the issue lives:

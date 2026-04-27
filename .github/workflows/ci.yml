@@ -424,10 +424,11 @@ jobs:
       - name: Audit production dependencies
         run: node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high
 
-  # Advisory in Phase 1 of the SBOM/zero-trust audit (continue-on-error: true,
-  # not in security-fast needs). Phase 2 flips continue-on-error to false and
-  # adds this job to security-fast's needs aggregator after the
-  # scripts/lib/dependency-ownership.json gaps are backfilled.
+  # Hard-block as of Phase 2 of the SBOM/zero-trust audit. The
+  # scripts/lib/dependency-ownership.json ledger has zero gaps at the time of
+  # the flip (verified locally with pnpm deps:sbom-risk:check returning
+  # [sbom-risk] ok). New root dependencies must be accompanied by an ownership
+  # entry or this job fails the PR.
   # See docs/security/audit-2026-04.md and the companion plan.
   security-sbom-risk:
     permissions:
@@ -435,7 +436,6 @@ jobs:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -450,12 +450,12 @@ jobs:
         with:
           install-bun: "false"
 
-      - name: Run SBOM-risk ownership check (advisory)
+      - name: Run SBOM-risk ownership check
         run: pnpm deps:sbom-risk:check
 
   security-fast:
     permissions: {}
-    needs: [security-scm-fast, security-dependency-audit]
+    needs: [security-scm-fast, security-dependency-audit, security-sbom-risk]
     if: ${{ !cancelled() && always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -464,13 +464,15 @@ jobs:
         env:
           DEPENDENCY_AUDIT_RESULT: ${{ needs.security-dependency-audit.result }}
           SCM_RESULT: ${{ needs.security-scm-fast.result }}
+          SBOM_RISK_RESULT: ${{ needs.security-sbom-risk.result }}
         run: |
           set -euo pipefail
           failed=0
 
           for result in \
             "security-scm-fast=${SCM_RESULT}" \
-            "security-dependency-audit=${DEPENDENCY_AUDIT_RESULT}"
+            "security-dependency-audit=${DEPENDENCY_AUDIT_RESULT}" \
+            "security-sbom-risk=${SBOM_RISK_RESULT}"
           do
             job="${result%%=*}"
             status="${result#*=}"

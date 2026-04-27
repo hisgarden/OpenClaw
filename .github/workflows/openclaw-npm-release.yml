@@ -287,6 +287,7 @@ jobs:
       actions: read
       contents: read
       id-token: write
+      attestations: write
     steps:
       - name: Validate tag input format
         env:
@@ -418,3 +419,31 @@ jobs:
             publish_target="./${publish_target}"
           fi
           bash scripts/openclaw-npm-publish.sh --publish "${publish_target}"
+
+      # SBOM + attestation chain (Phase 2 of the SBOM/zero-trust audit).
+      # See docs/security/audit-2026-04.md and the companion plan.
+      # npm tarball provenance is already produced by `npm publish --provenance`
+      # invoked above. The steps below add a sigstore-backed CycloneDX/SPDX
+      # SBOM attestation pointing at the same tarball digest, reaching SLSA
+      # Build Level 3 via GitHub-native primitives.
+      - name: Generate release SBOMs (CycloneDX 1.6 + SPDX 3.0.1)
+        run: pnpm sbom:generate
+
+      - name: Attest npm tarball build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.publish_tarball.outputs.path }}
+
+      - name: Attest npm tarball SBOM (CycloneDX)
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: ${{ steps.publish_tarball.outputs.path }}
+          sbom-path: bom/sbom.cdx.json
+
+      - name: Upload SBOMs as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-npm-${{ inputs.tag }}
+          path: bom/
+          if-no-files-found: error
+          retention-days: 90

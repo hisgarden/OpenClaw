@@ -75,6 +75,25 @@ jobs:
           git fetch --no-tags origin "+refs/heads/${WORKFLOW_REF_NAME}:refs/remotes/origin/${WORKFLOW_REF_NAME}"
           pnpm release:openclaw:npm:check
 
+      # Phase 2 of the SBOM/zero-trust audit: generate a CycloneDX/SPDX SBOM
+      # for the JS bundle that ships inside the macOS app, and upload it as a
+      # workflow artifact so the private mac-publish lane in
+      # openclaw/releases-private can pick it up and attest the signed/
+      # notarized DMG against this same SBOM digest. Public DMG/.app
+      # provenance attachment is handled by that private workflow because
+      # signing identity + notarization happen there.
+      # See docs/security/audit-2026-04.md and the companion plan.
+      - name: Generate release SBOMs (CycloneDX 1.6 + SPDX 3.0.1)
+        run: pnpm sbom:generate
+
+      - name: Upload SBOMs for private mac publish handoff
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-macos-${{ inputs.tag }}
+          path: bom/
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Summarize next step
         env:
           RELEASE_TAG: ${{ inputs.tag }}
@@ -88,6 +107,6 @@ jobs:
             echo "Next step:"
             echo "- Run \`openclaw/releases-private/.github/workflows/openclaw-macos-validate.yml\` with tag \`${RELEASE_TAG}\` and wait for the private mac validation lane to pass."
             echo "- Run \`openclaw/releases-private/.github/workflows/openclaw-macos-publish.yml\` with tag \`${RELEASE_TAG}\` and \`preflight_only=true\` for the full private mac preflight."
-            echo "- For the real publish path, run the same private mac publish workflow from \`main\` with the successful private preflight \`preflight_run_id\` so it promotes the prepared artifacts instead of rebuilding them."
+            echo "- For the real publish path, run the same private mac publish workflow from \`main\` with the successful private preflight \`preflight_run_id\` so it promotes the prepared artifacts instead of rebuilding them. Have it download the \`sbom-macos-${RELEASE_TAG}\` artifact from this run and attach attestations (\`actions/attest-build-provenance@v2\` + \`actions/attest-sbom@v2\`) to the signed/notarized DMG using that SBOM."
             echo "- For stable releases, also download \`macos-appcast-${RELEASE_TAG}\` from the successful private run and commit \`appcast.xml\` back to \`main\` in \`openclaw/openclaw\`."
           } >> "$GITHUB_STEP_SUMMARY"
