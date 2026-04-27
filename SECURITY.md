@@ -2,6 +2,12 @@
 
 If you believe you've found a security issue in OpenClaw, please report it privately.
 
+## Audit history
+
+| Date       | Document                                                           | Scope                                     |
+| ---------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| 2026-04-25 | [`docs/security/audit-2026-04.md`](docs/security/audit-2026-04.md) | SBOM, zero-trust, solo-maintainer surface |
+
 ## Reporting
 
 Report vulnerabilities directly to the repository where the issue lives:
