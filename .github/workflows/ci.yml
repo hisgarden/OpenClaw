@@ -424,6 +424,35 @@ jobs:
       - name: Audit production dependencies
         run: node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high
 
+  # Advisory in Phase 1 of the SBOM/zero-trust audit (continue-on-error: true,
+  # not in security-fast needs). Phase 2 flips continue-on-error to false and
+  # adds this job to security-fast's needs aggregator after the
+  # scripts/lib/dependency-ownership.json gaps are backfilled.
+  # See docs/security/audit-2026-04.md and the companion plan.
+  security-sbom-risk:
+    permissions:
+      contents: read
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Run SBOM-risk ownership check (advisory)
+        run: pnpm deps:sbom-risk:check
+
   security-fast:
     permissions: {}
     needs: [security-scm-fast, security-dependency-audit]

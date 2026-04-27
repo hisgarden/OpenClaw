@@ -1,0 +1,17 @@
+{
+  "$comment": "Used by scripts/sbom/generate-release-sbom.mjs. CycloneDX 1.6 format, full root closure for the published surface. The 'excludePatterns' list mirrors the negative patterns in package.json's files allowlist (qa-* extensions are not published and should not appear in the release SBOM). See docs/security/audit-2026-04.md and the companion plan for rationale.",
+  "specVersion": "1.6",
+  "includeFormulation": true,
+  "includeCrypto": false,
+  "requiredOnly": false,
+  "excludePatterns": [
+    "extensions/qa-channel/**",
+    "extensions/qa-lab/**",
+    "extensions/qa-matrix/**",
+    "**/node_modules/.cache/**",
+    "**/dist/**",
+    "**/.openclaw-runtime-deps-*/**"
+  ],
+  "projectName": "openclaw",
+  "projectType": "application"
+}
