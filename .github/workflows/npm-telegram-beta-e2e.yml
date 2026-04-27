@@ -109,6 +109,8 @@ jobs:
           target: build
           platforms: linux/amd64
           tags: ${{ steps.image.outputs.image }}
+          # Ephemeral E2E test image — single CI run, not a release artifact.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
           push: true
 

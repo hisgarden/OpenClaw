@@ -110,6 +110,8 @@ jobs:
             openclaw-ext-smoke:local
           load: true
           push: false
+          # Local-only smoke image (load: true, push: false). Never published.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
 
       - name: Run root Dockerfile CLI smoke
@@ -211,6 +213,8 @@ jobs:
             openclaw-ext-smoke:local
           load: true
           push: false
+          # Local-only smoke image (load: true, push: false). Never published.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
 
       - name: Run root Dockerfile CLI smoke
@@ -282,6 +286,8 @@ jobs:
           tags: openclaw-install-smoke:local
           load: true
           push: false
+          # Local-only smoke image (load: true, push: false). Never published.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
 
       - name: Build installer non-root image
@@ -292,6 +298,8 @@ jobs:
           tags: openclaw-install-nonroot:local
           load: true
           push: false
+          # Local-only smoke image (load: true, push: false). Never published.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
 
       - name: Setup Node environment for installer smoke

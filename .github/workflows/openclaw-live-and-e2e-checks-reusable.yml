@@ -636,6 +636,8 @@ jobs:
           cache-from: type=gha,scope=docker-e2e
           cache-to: type=gha,mode=max,scope=docker-e2e
           tags: ${{ steps.image.outputs.image }}
+          # Ephemeral E2E test image — single CI run, not a release artifact.
+          # See SECURITY.md "Test-image provenance policy".
           provenance: false
           push: true
 

@@ -161,7 +161,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-amd64
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
-          provenance: false
+          # SLSA build provenance attached via attest-build-provenance below.
+          provenance: mode=max
+          sbom: true
           push: true
 
       - name: Build and push amd64 slim image
@@ -177,7 +179,9 @@ jobs:
             OPENCLAW_VARIANT=slim
           tags: ${{ steps.tags.outputs.slim }}
           labels: ${{ steps.labels.outputs.value }}
-          provenance: false
+          # SLSA build provenance attached via attest-build-provenance below.
+          provenance: mode=max
+          sbom: true
           push: true
 
   # Build arm64 images (default + slim share the build stage cache)
@@ -278,7 +282,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-arm64
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
-          provenance: false
+          # SLSA build provenance attached via attest-build-provenance below.
+          provenance: mode=max
+          sbom: true
           push: true
 
       - name: Build and push arm64 slim image
@@ -294,7 +300,9 @@ jobs:
             OPENCLAW_VARIANT=slim
           tags: ${{ steps.tags.outputs.slim }}
           labels: ${{ steps.labels.outputs.value }}
-          provenance: false
+          # SLSA build provenance attached via attest-build-provenance below.
+          provenance: mode=max
+          sbom: true
           push: true
 
   # Create multi-platform manifests
@@ -395,3 +403,103 @@ jobs:
           docker buildx imagetools create "${args[@]}" \
             "${AMD64_SLIM_DIGEST}" \
             "${ARM64_SLIM_DIGEST}"
+
+  # SBOM + attestation chain (Phase 2 of the SBOM/zero-trust audit).
+  # See docs/security/audit-2026-04.md and the companion plan.
+  # Generates one source-based CycloneDX/SPDX SBOM and attests it plus
+  # build-provenance for each of the 4 per-arch image digests pushed by
+  # build-amd64 and build-arm64. Attestations are attached as OCI referrers
+  # via push-to-registry: true. Verifiable downstream with
+  #   gh attestation verify --owner openclaw <image-ref>
+  #   cosign verify-attestation --type cyclonedx <image-ref>
+  attest-images:
+    needs: [build-amd64, build-arm64, create-manifest]
+    if: ${{ always() && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success' && needs.create-manifest.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          fetch-depth: 1
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Generate release SBOMs (CycloneDX 1.6 + SPDX 3.0.1)
+        run: pnpm sbom:generate
+
+      - name: Attest amd64 default image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-amd64.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest amd64 default SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-amd64.outputs.digest }}
+          sbom-path: bom/sbom.cdx.json
+          push-to-registry: true
+
+      - name: Attest amd64 slim image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-amd64.outputs.slim-digest }}
+          push-to-registry: true
+
+      - name: Attest amd64 slim SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-amd64.outputs.slim-digest }}
+          sbom-path: bom/sbom.cdx.json
+          push-to-registry: true
+
+      - name: Attest arm64 default image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-arm64.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest arm64 default SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-arm64.outputs.digest }}
+          sbom-path: bom/sbom.cdx.json
+          push-to-registry: true
+
+      - name: Attest arm64 slim image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-arm64.outputs.slim-digest }}
+          push-to-registry: true
+
+      - name: Attest arm64 slim SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.build-arm64.outputs.slim-digest }}
+          sbom-path: bom/sbom.cdx.json
+          push-to-registry: true
+
+      - name: Upload SBOMs as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-docker-${{ github.run_id }}
+          path: bom/
+          if-no-files-found: error
+          retention-days: 90
